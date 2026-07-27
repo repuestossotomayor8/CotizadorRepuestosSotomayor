@@ -32,13 +32,18 @@ export function QuoteCart() {
     setClientName,
     setClientPhone,
     setPaymentMethod,
-    removeItem,
     updateQuantity,
+    updatePrice,
+    removeItem,
     clearCart,
     getSubtotal,
   } = useCartStore();
   const { data: bcvRate = 36.5 } = useBcvRate();
   const { data: bcvMultiplier = 1.4 } = useBcvMultiplier();
+  
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [editPriceValue, setEditPriceValue] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
   const { data: products = [] } = useProducts();
   const createQuote = useCreateQuote();
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -281,7 +286,42 @@ export function QuoteCart() {
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-[13px] font-bold text-slate-900">{formatUSD(itemPrice)}</p>
+                      {editingPriceId === item.product_id ? (
+                        <input
+                          type="number"
+                          autoFocus
+                          value={editPriceValue}
+                          onChange={(e) => setEditPriceValue(e.target.value)}
+                          onBlur={() => {
+                            const val = parseFloat(editPriceValue);
+                            if (!isNaN(val) && val >= 0) {
+                              const basePrice = paymentMethod === 'bs' ? val / bcvMultiplier : val;
+                              updatePrice(item.product_id, basePrice);
+                            }
+                            setEditingPriceId(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.currentTarget.blur();
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingPriceId(null);
+                            }
+                          }}
+                          className="w-16 h-6 text-[12px] font-bold text-right border border-emerald-500 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        />
+                      ) : (
+                        <p 
+                          className="text-[13px] font-bold text-slate-900 cursor-pointer hover:text-emerald-600 transition-colors"
+                          title="Clic para editar precio"
+                          onClick={() => {
+                            setEditPriceValue(itemPrice.toFixed(2));
+                            setEditingPriceId(item.product_id);
+                          }}
+                        >
+                          {formatUSD(itemPrice)}
+                        </p>
+                      )}
                       {paymentMethod === 'bs' && (
                         <p className="text-[10px] text-slate-500">
                           Bs {(itemBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}

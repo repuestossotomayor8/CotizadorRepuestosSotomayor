@@ -13,6 +13,7 @@ interface CartStore {
   addItem: (item: CartItem) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
+  updatePrice: (productId: string, price: number) => void;
   clearCart: () => void;
   getSubtotal: (bcvMultiplier?: number) => number;
   getIVA: (bcvMultiplier?: number) => number;
@@ -55,6 +56,13 @@ export const useCartStore = create<CartStore>()(
         set({
           items: get().items.map((i) =>
             i.product_id === productId ? { ...i, quantity } : i
+          ),
+        });
+      },
+      updatePrice: (productId, price) => {
+        set({
+          items: get().items.map((i) =>
+            i.product_id === productId ? { ...i, unit_price_usd: price } : i
           ),
         });
       },

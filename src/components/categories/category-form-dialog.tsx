@@ -69,6 +69,7 @@ export function CategoryFormDialog({ open, onOpenChange, category }: CategoryFor
     sections.add('Transmisión');
     sections.add('Tren Delantero');
     sections.add('Frenos');
+    sections.add('Embrague');
     
     // Add sections from existing categories
     categoriesList.forEach((c) => {

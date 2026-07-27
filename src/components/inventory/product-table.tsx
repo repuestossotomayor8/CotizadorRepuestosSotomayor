@@ -41,6 +41,10 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
   const [displayLimit, setDisplayLimit] = useState(100);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [brandFilter, setBrandFilter] = useState<string>('all');
+  const [stockFilter, setStockFilter] = useState<string>('all');
+  const [webStatusFilter, setWebStatusFilter] = useState<string>('all');
+  const [priceFilter, setPriceFilter] = useState<string>('all');
+  const [imageFilter, setImageFilter] = useState<string>('all');
   const [recentsOnly, setRecentsOnly] = useState(!!showRecentsOnMount);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -50,6 +54,7 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
   const [productForHistory, setProductForHistory] = useState<Product | null>(null);
   const [galleryProduct, setGalleryProduct] = useState<Product | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const updateProduct = useUpdateProduct();
@@ -85,7 +90,7 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
     [products]
   );
 
-  const isFiltering = searchQuery || categoryFilter !== 'all' || brandFilter !== 'all' || recentsOnly;
+  const isFiltering = searchQuery || categoryFilter !== 'all' || brandFilter !== 'all' || stockFilter !== 'all' || webStatusFilter !== 'all' || priceFilter !== 'all' || imageFilter !== 'all' || recentsOnly;
 
   const filteredProducts = useMemo(() => {
     let result = searchQuery
@@ -100,6 +105,30 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
       result = result.filter((p) => p.brand_id === brandFilter);
     }
 
+    if (stockFilter === 'zero_stock') {
+      result = result.filter((p) => (p.stock ?? 0) <= 0);
+    } else if (stockFilter === 'in_stock') {
+      result = result.filter((p) => (p.stock ?? 0) > 0);
+    }
+
+    if (webStatusFilter === 'visible') {
+      result = result.filter((p) => p.is_active !== false);
+    } else if (webStatusFilter === 'hidden') {
+      result = result.filter((p) => p.is_active === false);
+    }
+
+    if (priceFilter === 'zero_price') {
+      result = result.filter((p) => (p.price_usd ?? 0) <= 0);
+    } else if (priceFilter === 'with_price') {
+      result = result.filter((p) => (p.price_usd ?? 0) > 0);
+    }
+
+    if (imageFilter === 'with_image') {
+      result = result.filter((p) => !!p.image_url || (p.image_urls && p.image_urls.length > 0));
+    } else if (imageFilter === 'without_image') {
+      result = result.filter((p) => !p.image_url && (!p.image_urls || p.image_urls.length === 0));
+    }
+
     if (recentsOnly) {
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       result = result.filter((p) => p.created_at && p.created_at >= oneDayAgo);
@@ -107,7 +136,7 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
     }
 
     return result;
-  }, [products, searchQuery, categoryFilter, brandFilter, recentsOnly, fuse]);
+  }, [products, searchQuery, categoryFilter, brandFilter, stockFilter, webStatusFilter, priceFilter, imageFilter, recentsOnly, fuse]);
 
   // Limit displayed products: show all when filtering/searching, otherwise show latest 100
   const displayProducts = useMemo(() => {
@@ -124,23 +153,6 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
   const hasMore = !isFiltering && displayLimit < filteredProducts.length;
   const remainingCount = filteredProducts.length - displayLimit;
 
-  const toggleSelect = useCallback((id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const toggleSelectAll = useCallback(() => {
-    if (selectedIds.size === displayProducts.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(displayProducts.map(p => p.id)));
-    }
-  }, [displayProducts, selectedIds.size]);
-
   const handleBulkDelete = useCallback(async () => {
     if (selectedIds.size === 0) return;
     const confirmed = window.confirm(`¿Estás seguro de eliminar ${selectedIds.size} producto${selectedIds.size > 1 ? 's' : ''}? Esta acción no se puede deshacer.`);
@@ -150,6 +162,7 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
       await bulkDelete.mutateAsync(Array.from(selectedIds));
       toast.success(`${selectedIds.size} producto${selectedIds.size > 1 ? 's' : ''} eliminado${selectedIds.size > 1 ? 's' : ''}`);
       setSelectedIds(new Set());
+      setLastSelectedId(null);
     } catch (err: any) {
       toast.error(`Error al eliminar: ${err.message}`);
     } finally {
@@ -161,24 +174,68 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
     () => [
       columnHelper.display({
         id: 'select',
-        header: () => (
-          <input
-            type="checkbox"
-            checked={displayProducts.length > 0 && selectedIds.size === displayProducts.length}
-            onChange={toggleSelectAll}
-            className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-          />
-        ),
+        header: ({ table }) => {
+          const currentRows = table.getRowModel().rows;
+          const currentIds = currentRows.map(r => r.original.id);
+          const allSelected = currentIds.length > 0 && currentIds.every(id => selectedIds.has(id));
+          return (
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={() => {
+                setSelectedIds(prev => {
+                  const next = new Set(prev);
+                  if (allSelected) {
+                    currentIds.forEach(id => next.delete(id));
+                    setLastSelectedId(null);
+                  } else {
+                    currentIds.forEach(id => next.add(id));
+                    setLastSelectedId(currentIds.length > 0 ? currentIds[0] : null);
+                  }
+                  return next;
+                });
+              }}
+              className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+            />
+          );
+        },
         size: 36,
-        cell: ({ row }) => (
+        cell: ({ row, table }) => (
           <input
             type="checkbox"
             checked={selectedIds.has(row.original.id)}
-            onChange={(e) => {
+            onChange={() => {}}
+            onClick={(e) => {
               e.stopPropagation();
-              toggleSelect(row.original.id);
+              const isMulti = e.ctrlKey || e.shiftKey || e.metaKey;
+              const currentRows = table.getRowModel().rows;
+              const currentIds = currentRows.map(r => r.original.id);
+              
+              setSelectedIds(prev => {
+                const next = new Set(prev);
+                if (isMulti && lastSelectedId) {
+                  const lastIndex = currentIds.indexOf(lastSelectedId);
+                  const currentIndex = row.index;
+                  if (lastIndex !== -1 && currentIndex !== -1 && lastIndex !== currentIndex) {
+                    const start = Math.min(lastIndex, currentIndex);
+                    const end = Math.max(lastIndex, currentIndex);
+                    for (let idx = start; idx <= end; idx++) {
+                      next.add(currentIds[idx]);
+                    }
+                    setLastSelectedId(row.original.id);
+                    return next;
+                  }
+                }
+
+                if (next.has(row.original.id)) {
+                  next.delete(row.original.id);
+                } else {
+                  next.add(row.original.id);
+                }
+                setLastSelectedId(row.original.id);
+                return next;
+              });
             }}
-            onClick={(e) => e.stopPropagation()}
             className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
           />
         ),
@@ -407,7 +464,7 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
         ),
       }),
     ],
-    [bcvRate, bcvMultiplier, addItem, selectedIds, displayProducts, toggleSelect, toggleSelectAll]
+    [bcvRate, bcvMultiplier, addItem, selectedIds, lastSelectedId]
   );
 
   const table = useReactTable({
@@ -514,7 +571,10 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
               {selectedIds.size} producto{selectedIds.size > 1 ? 's' : ''} seleccionado{selectedIds.size > 1 ? 's' : ''}
             </span>
             <button
-              onClick={() => setSelectedIds(new Set())}
+              onClick={() => {
+                setSelectedIds(new Set());
+                setLastSelectedId(null);
+              }}
               className="text-[11px] text-red-500 hover:text-red-700 underline ml-1"
             >
               Deseleccionar
@@ -580,13 +640,13 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
 
       {/* Filter Bar */}
       {showFilters && (
-        <div className="flex items-center gap-4 p-3 bg-slate-50 border-b border-slate-200">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3 p-3 bg-slate-50 border-b border-slate-200">
+          <div className="flex items-center gap-1.5">
             <span className="text-[12px] text-slate-600 font-medium">Categoría:</span>
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="h-8 px-2 text-[12px] rounded-md bg-white border border-slate-200 text-slate-700"
+              className="h-8 px-2 text-[12px] rounded-md bg-white border border-slate-200 text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
             >
               <option value="all">Todas</option>
               {Object.entries(categoryGroups).map(([section, cats]) => (
@@ -598,12 +658,13 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
               ))}
             </select>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-1.5">
             <span className="text-[12px] text-slate-600 font-medium">Marca:</span>
             <select
               value={brandFilter}
               onChange={(e) => setBrandFilter(e.target.value)}
-              className="h-8 px-2 text-[12px] rounded-md bg-white border border-slate-200 text-slate-700"
+              className="h-8 px-2 text-[12px] rounded-md bg-white border border-slate-200 text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
             >
               <option value="all">Todas</option>
               {brands.map((b: any) => (
@@ -611,8 +672,71 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
               ))}
             </select>
           </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[12px] text-slate-600 font-medium">Existencia:</span>
+            <select
+              value={stockFilter}
+              onChange={(e) => setStockFilter(e.target.value)}
+              className="h-8 px-2 text-[12px] rounded-md bg-white border border-slate-200 text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+            >
+              <option value="all">Todas</option>
+              <option value="in_stock">Con Stock (&gt; 0)</option>
+              <option value="zero_stock">Existencia 0 (Sin Stock)</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[12px] text-slate-600 font-medium">Estado Web:</span>
+            <select
+              value={webStatusFilter}
+              onChange={(e) => setWebStatusFilter(e.target.value)}
+              className="h-8 px-2 text-[12px] rounded-md bg-white border border-slate-200 text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+            >
+              <option value="all">Todos</option>
+              <option value="visible">Visibles en Web</option>
+              <option value="hidden">Ocultos en Web</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[12px] text-slate-600 font-medium">Precio:</span>
+            <select
+              value={priceFilter}
+              onChange={(e) => setPriceFilter(e.target.value)}
+              className="h-8 px-2 text-[12px] rounded-md bg-white border border-slate-200 text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+            >
+              <option value="all">Todos</option>
+              <option value="with_price">Con Precio ($ &gt; 0)</option>
+              <option value="zero_price">Sin Precio ($0.00)</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[12px] text-slate-600 font-medium">Foto:</span>
+            <select
+              value={imageFilter}
+              onChange={(e) => setImageFilter(e.target.value)}
+              className="h-8 px-2 text-[12px] rounded-md bg-white border border-slate-200 text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+            >
+              <option value="all">Todas</option>
+              <option value="with_image">Con Imagen</option>
+              <option value="without_image">Sin Imagen</option>
+            </select>
+          </div>
+
           <button
-            onClick={() => { setCategoryFilter('all'); setBrandFilter('all'); setSearchQuery(''); setSearchInput(''); setRecentsOnly(false); }}
+            onClick={() => {
+              setCategoryFilter('all');
+              setBrandFilter('all');
+              setStockFilter('all');
+              setWebStatusFilter('all');
+              setPriceFilter('all');
+              setImageFilter('all');
+              setSearchQuery('');
+              setSearchInput('');
+              setRecentsOnly(false);
+            }}
             className="text-[12px] text-slate-500 hover:text-slate-900 transition-colors ml-auto font-medium"
           >
             Limpiar filtros
