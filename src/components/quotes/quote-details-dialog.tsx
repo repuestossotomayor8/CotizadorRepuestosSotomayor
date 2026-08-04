@@ -71,11 +71,15 @@ export function QuoteDetailsDialog({ open, onOpenChange, quote }: QuoteDetailsDi
         msg += `- ${item.quantity}x ${item.product_name}${brandSuffix} — ${formatUSD(item.unit_price_usd || 0)}\n`;
       });
       msg += `\n*Total USD:* ${formatUSD(quote.total_usd || 0)}\n`;
-      msg += `*Total Bs:* Bs ${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`;
       msg += `\n_📎 El PDF fue descargado. Adjúntalo a este chat._`;
 
       const encoded = encodeURIComponent(msg);
       window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
+      
+      if (!quote.status || quote.status.toLowerCase() === 'cotizada') {
+        handleUpdateStatus('Enviada por WhatsApp');
+      }
+
       toast.success('PDF descargado. Adjunta el archivo en el chat de WhatsApp.');
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
@@ -120,6 +124,7 @@ export function QuoteDetailsDialog({ open, onOpenChange, quote }: QuoteDetailsDi
                 className={`
                   text-[10px] font-bold uppercase tracking-widest border-none px-2 py-1 rounded
                   ${status === 'cotizada' ? 'bg-blue-100 text-blue-700' : ''}
+                  ${status === 'enviada por whatsapp' ? 'bg-[#25D366]/10 text-[#128C7E]' : ''}
                   ${status === 'aprobada' ? 'bg-emerald-100 text-emerald-700' : ''}
                   ${status === 'rechazada' ? 'bg-red-100 text-red-700' : ''}
                   ${status === 'anulada' ? 'bg-slate-200 text-slate-700' : ''}

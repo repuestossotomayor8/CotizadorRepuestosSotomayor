@@ -215,7 +215,7 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
                 const next = new Set(prev);
                 if (isMulti && lastSelectedId) {
                   const lastIndex = currentIds.indexOf(lastSelectedId);
-                  const currentIndex = row.index;
+                  const currentIndex = currentRows.findIndex(r => r.original.id === row.original.id);
                   if (lastIndex !== -1 && currentIndex !== -1 && lastIndex !== currentIndex) {
                     const start = Math.min(lastIndex, currentIndex);
                     const end = Math.max(lastIndex, currentIndex);

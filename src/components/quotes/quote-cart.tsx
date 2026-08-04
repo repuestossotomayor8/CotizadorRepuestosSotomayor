@@ -120,6 +120,11 @@ export function QuoteCart() {
       return;
     }
 
+    if (!clientName.trim()) {
+      toast.error('Ingresa el nombre del cliente para poder registrar la cotización');
+      return;
+    }
+
     setIsGeneratingPdf(true);
     try {
       const tempQuote = buildTempQuote();
@@ -156,10 +161,32 @@ export function QuoteCart() {
       const encoded = encodeURIComponent(msg);
       // Open WhatsApp directly with the client's phone number
       window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
-      toast.success('PDF descargado. Adjunta el archivo en el chat de WhatsApp.');
+      // Save the quote to the database to register it in history
+      await createQuote.mutateAsync({
+        quote: {
+          client_name: clientName,
+          client_phone: clientPhone,
+          total_usd: total,
+          bcv_rate: bcvRate,
+          status: 'Enviada por WhatsApp',
+        },
+        items: items.map((item) => ({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          product_code: item.product_code,
+          quantity: item.quantity,
+          unit_price_usd: item.unit_price_usd,
+          brand_name: item.brand_name,
+          brand_logo_url: item.brand_logo_url,
+        })),
+      });
+
+      // Clear cart after saving and sending
+      clearCart();
+      toast.success('PDF descargado y cotización registrada. Adjunta el archivo en el chat de WhatsApp.');
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
-        toast.error('Error al enviar por WhatsApp');
+        toast.error('Error al enviar por WhatsApp y registrar');
       }
     } finally {
       setIsGeneratingPdf(false);
