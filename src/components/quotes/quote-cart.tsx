@@ -285,17 +285,31 @@ export function QuoteCart() {
                       <p className="text-[12px] font-bold text-slate-900 leading-tight">
                         {item.product_name}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(item.product_code);
-                          toast.success(`Código copiado: ${item.product_code}`);
-                        }}
-                        className="text-[10px] font-mono text-slate-500 mt-1 uppercase tracking-wide hover:text-emerald-600 cursor-pointer transition-colors"
-                        title="Clic para copiar código"
-                      >
-                        {item.product_code}
-                      </button>
+                      <div className="flex items-center gap-2 mt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(item.product_code);
+                            toast.success(`Código copiado: ${item.product_code}`);
+                          }}
+                          className="text-[10px] font-mono text-slate-500 uppercase tracking-wide hover:text-emerald-600 cursor-pointer transition-colors"
+                          title="Clic para copiar código"
+                        >
+                          {item.product_code}
+                        </button>
+                        {item.brand_logo_url ? (
+                          <img 
+                            src={item.brand_logo_url} 
+                            alt={item.brand_name || 'Marca'} 
+                            className="h-4 max-w-[60px] object-contain opacity-90"
+                            title={item.brand_name}
+                          />
+                        ) : item.brand_name ? (
+                          <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 rounded uppercase tracking-wider">
+                            {item.brand_name}
+                          </span>
+                        ) : null}
+                      </div>
                       <div className="mt-1">
                         <span className={cn(
                           "text-[10px] font-bold px-1.5 py-0.5 rounded",

@@ -23,6 +23,7 @@ export default function HomePage() {
   const [selectedKit, setSelectedKit] = useState<Kit | null>(null);
   const [showRecentImports, setShowRecentImports] = useState(false);
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
+  const [cartWidth, setCartWidth] = useState(320);
   const cartItemsCount = useCartStore((s) => s.items.length);
 
   // Listen for navigate-tab events from notification panel
@@ -82,7 +83,38 @@ export default function HomePage() {
         </div>
 
         {/* Quote Cart - Fixed Right Panel (Desktop only) */}
-        <div className="hidden lg:block w-[320px] min-w-[320px] max-w-[320px] shrink-0 border-l border-slate-200 bg-white z-10 overflow-hidden">
+        <div 
+          className="hidden lg:block shrink-0 border-l border-slate-200 bg-white z-10 overflow-hidden relative"
+          style={{ width: `${cartWidth}px`, minWidth: '320px', maxWidth: '800px' }}
+        >
+          {/* Drag Handle */}
+          <div 
+            className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 transition-colors z-20 group"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              const startX = e.pageX;
+              const startWidth = cartWidth;
+              
+              const onMouseMove = (moveEvent: MouseEvent) => {
+                const diff = startX - moveEvent.pageX;
+                // Min 320px, Max 800px or half screen width
+                const newWidth = Math.min(Math.max(startWidth + diff, 320), 800);
+                setCartWidth(newWidth);
+              };
+
+              const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                document.body.style.cursor = 'default';
+              };
+
+              document.body.style.cursor = 'col-resize';
+              document.addEventListener('mousemove', onMouseMove);
+              document.addEventListener('mouseup', onMouseUp);
+            }}
+          >
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-0.5 h-8 bg-slate-300 rounded-full group-hover:bg-emerald-600 transition-colors" />
+          </div>
           <QuoteCart />
         </div>
       </div>

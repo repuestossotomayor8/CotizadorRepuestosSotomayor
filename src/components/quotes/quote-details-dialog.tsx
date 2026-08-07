@@ -4,10 +4,11 @@ import { Quote, QuoteItem } from '@/types';
 import { useUpdateQuote, useBcvMultiplier } from '@/hooks/use-supabase';
 import { formatUSD } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Calendar, User, Phone, CheckCircle, XCircle, FileText, MessageCircle } from 'lucide-react';
+import { Calendar, User, Phone, CheckCircle, XCircle, FileText, MessageCircle, ShoppingCart } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useState } from 'react';
 import { generateQuotePDF } from '@/lib/generate-quote-pdf';
+import { useCartStore } from '@/store/cart-store';
 
 interface QuoteDetailsDialogProps {
   open: boolean;
@@ -19,6 +20,7 @@ export function QuoteDetailsDialog({ open, onOpenChange, quote }: QuoteDetailsDi
   const updateQuote = useUpdateQuote();
   const { data: bcvMultiplier = 1.4 } = useBcvMultiplier();
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const { clearCart, setClientName, setClientPhone, addItem } = useCartStore();
 
   if (!quote) return null;
 
@@ -108,6 +110,28 @@ export function QuoteDetailsDialog({ open, onOpenChange, quote }: QuoteDetailsDi
     } finally {
       setIsGeneratingPDF(false);
     }
+  };
+
+  const handleSendToCart = () => {
+    if (!quote) return;
+    clearCart();
+    if (quote.client_name) setClientName(quote.client_name);
+    if (quote.client_phone) setClientPhone(quote.client_phone);
+    
+    quote.quote_items?.forEach((item) => {
+      addItem({
+        product_id: item.product_id,
+        product_name: item.product_name,
+        product_code: item.product_code,
+        quantity: item.quantity,
+        unit_price_usd: item.unit_price_usd,
+        brand_name: item.brand_name || undefined,
+        brand_logo_url: item.brand_logo_url || undefined,
+      });
+    });
+    
+    toast.success('Cotización enviada al carrito actual');
+    onOpenChange(false);
   };
 
   const status = quote.status?.toLowerCase() || 'cotizada';
@@ -205,17 +229,25 @@ export function QuoteDetailsDialog({ open, onOpenChange, quote }: QuoteDetailsDi
           </div>
 
           {/* Actions */}
-          <div className="pt-4 flex justify-between gap-3 border-t border-slate-200">
+          <div className="pt-4 flex flex-wrap justify-between gap-3 border-t border-slate-200">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              className="bg-white border-slate-200 hover:bg-slate-50 text-slate-600"
+              className="bg-white border-slate-200 hover:bg-slate-50 text-slate-600 shrink-0"
             >
               Cerrar
             </Button>
             
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                onClick={handleSendToCart}
+                className="bg-indigo-600 text-white hover:bg-indigo-700 gap-2"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                Al Carrito
+              </Button>
               <Button
                 type="button"
                 onClick={() => handleDownloadPDF('usd')}
