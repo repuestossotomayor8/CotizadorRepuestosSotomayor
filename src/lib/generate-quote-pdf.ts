@@ -8,6 +8,8 @@ interface GenerateQuotePDFOptions {
   currency: 'usd' | 'bcv' | 'both';
   bcvMultiplier?: number;
   returnBlob?: boolean;
+  randomPhrase?: string;
+  bcvRate?: number;
 }
 
 // Helper to convert hex color to RGB array
@@ -92,10 +94,10 @@ function roundedRect(
   doc.roundedRect(x, y, w, h, r, r, style);
 }
 
-export async function generateQuotePDF({ quote, currency, bcvMultiplier = 1, returnBlob = false }: GenerateQuotePDFOptions): Promise<{ fileName: string; blob?: Blob }> {
+export async function generateQuotePDF({ quote, currency, bcvMultiplier = 1, returnBlob = false, randomPhrase, bcvRate }: GenerateQuotePDFOptions): Promise<{ fileName: string; blob?: Blob }> {
   const isBcv = currency === 'bcv';
   const isBoth = currency === 'both';
-  const rate = quote.bcv_rate || 1;
+  const rate = bcvRate || quote.bcv_rate || 1;
   const mult = (isBcv || isBoth) ? bcvMultiplier : 1;
   const quoteNumber = quote.id.substring(0, 8).toUpperCase();
 
@@ -308,28 +310,28 @@ export async function generateQuotePDF({ quote, currency, bcvMultiplier = 1, ret
   const colStyles: Record<number, Partial<{ cellWidth: number; halign: 'left' | 'center' | 'right' }>> = isBoth
     ? {
         0: { halign: 'left' },
-        1: { cellWidth: 60, halign: 'center' },
+        1: { cellWidth: 80, halign: 'center' },
         2: { cellWidth: 28, halign: 'center' },
-        3: { cellWidth: 64, halign: 'right' },
-        4: { cellWidth: 72, halign: 'right' },
-        5: { cellWidth: 66, halign: 'right' },
-        6: { cellWidth: 70, halign: 'right' },
+        3: { cellWidth: 64, halign: 'center' },
+        4: { cellWidth: 72, halign: 'center' },
+        5: { cellWidth: 66, halign: 'center' },
+        6: { cellWidth: 70, halign: 'center' },
       }
     : isBcv
     ? {
         0: { halign: 'left' },
-        1: { cellWidth: 80, halign: 'center' },
+        1: { cellWidth: 100, halign: 'center' },
         2: { cellWidth: 35, halign: 'center' },
-        3: { cellWidth: 60, halign: 'right' },
-        4: { cellWidth: 70, halign: 'right' },
-        5: { cellWidth: 70, halign: 'right' },
+        3: { cellWidth: 60, halign: 'center' },
+        4: { cellWidth: 70, halign: 'center' },
+        5: { cellWidth: 70, halign: 'center' },
       }
     : {
         0: { halign: 'left' },
-        1: { cellWidth: 80, halign: 'center' },
+        1: { cellWidth: 100, halign: 'center' },
         2: { cellWidth: 40, halign: 'center' },
-        3: { cellWidth: 75, halign: 'right' },
-        4: { cellWidth: 75, halign: 'right' },
+        3: { cellWidth: 75, halign: 'center' },
+        4: { cellWidth: 75, halign: 'center' },
       };
 
   autoTable(doc, {
@@ -374,11 +376,26 @@ export async function generateQuotePDF({ quote, currency, bcvMultiplier = 1, ret
         const logoUrl = item?.brand_logo_url;
         if (logoUrl && brandLogoCache[logoUrl]) {
           try {
-            const imgW = isBoth ? 38 : 44;
-            const imgH = isBoth ? 19 : 22;
-            const imgX = data.cell.x + (data.cell.width - imgW) / 2;
-            const imgY = data.cell.y + (data.cell.height - imgH) / 2;
-            doc.addImage(brandLogoCache[logoUrl]!, 'PNG', imgX, imgY, imgW, imgH, undefined, 'FAST');
+            const maxW = isBoth ? 55 : 70;
+            const maxH = isBoth ? 22 : 26;
+            
+            const props = doc.getImageProperties(brandLogoCache[logoUrl]!);
+            const imgRatio = props.width / props.height;
+            const boxRatio = maxW / maxH;
+            
+            let finalW = maxW;
+            let finalH = maxH;
+            
+            if (imgRatio > boxRatio) {
+              finalH = maxW / imgRatio;
+            } else {
+              finalW = maxH * imgRatio;
+            }
+            
+            const imgX = data.cell.x + (data.cell.width - finalW) / 2;
+            const imgY = data.cell.y + (data.cell.height - finalH) / 2;
+            
+            doc.addImage(brandLogoCache[logoUrl]!, 'PNG', imgX, imgY, finalW, finalH, undefined, 'FAST');
           } catch {
             // Fallback: text already rendered
           }
@@ -613,13 +630,27 @@ export async function generateQuotePDF({ quote, currency, bcvMultiplier = 1, ret
   doc.line(margin, y, pageWidth - margin, y);
   y += 16;
 
+  const WHATSAPP_PHRASES = [
+    "La pasión por servirte es el motor que nunca se apaga.",
+    "Tu confianza es el combustible; nuestra vocación, el motor.",
+    "Encendemos cada jornada con la meta de darte el mejor rendimiento.",
+    "Más que piezas de recambio, entregamos la potencia de un servicio comprometido.",
+    "Aceleramos soluciones para que tus proyectos nunca se detengan.",
+    "Alineamos cada detalle de nuestra atención a la altura de tu camino.",
+    "La tracción que necesitas para avanzar con total seguridad.",
+    "Calidad en cada repuesto, dirección firme en cada asesoría.",
+    "Sincronizamos nuestra dedicación para mantener tu marcha perfecta.",
+    "Atención precisa y repuestos firmes: el engranaje de tu tranquilidad.",
+    "Tu satisfacción es la fuerza que mueve cada uno de nuestros engranajes.",
+    "Ajustamos cada solución con la precisión que tu trabajo merece."
+  ];
+  const footerPhrase = randomPhrase || WHATSAPP_PHRASES[Math.floor(Math.random() * WHATSAPP_PHRASES.length)];
+
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(8);
-  doc.setTextColor(148, 163, 184);
-  doc.text('* Los precios están sujetos a cambio sin previo aviso. Cotización válida por 24 horas.', margin, y);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`"${footerPhrase}"`, pageWidth / 2, y + 6, { align: 'center' });
   y += 12;
-  doc.setFont('helvetica', 'normal');
-  doc.text('Gracias por preferir a Repuestos Sotomayor.', margin, y);
 
   // Page badge
   doc.setFillColor(241, 245, 249);

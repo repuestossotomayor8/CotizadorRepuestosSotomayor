@@ -102,6 +102,23 @@ export interface KitItem {
   products?: Product; // Supabase joined relation usually uses plural or singular based on FK
 }
 
+export interface KitCombo {
+  id: string;
+  kit_id: string;
+  name: string;
+  created_at?: string;
+  kit_combo_items?: KitComboItem[];
+}
+
+export interface KitComboItem {
+  id: string;
+  combo_id: string;
+  product_id: string;
+  quantity: number;
+  created_at?: string;
+  products?: Product;
+}
+
 export interface Brand {
   id: string;
   name: string;

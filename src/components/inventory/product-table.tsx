@@ -79,6 +79,23 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
     return () => window.removeEventListener('open-product', handler);
   }, [products]);
 
+  // Listen for global-search events from header
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const query = (e as CustomEvent).detail?.query;
+      if (typeof query === 'string') {
+        setSearchInput(query);
+        setSearchQuery(query);
+        // Ensure filters are shown if there's a search query
+        if (query) {
+          setShowFilters(true);
+        }
+      }
+    };
+    window.addEventListener('global-search', handler);
+    return () => window.removeEventListener('global-search', handler);
+  }, []);
+
   // Fuzzy search
   const fuse = useMemo(
     () =>

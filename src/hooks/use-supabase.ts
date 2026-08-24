@@ -585,6 +585,120 @@ export function useDeleteKitItem() {
   });
 }
 
+// ========== Kit Combos ==========
+export function useKitCombos(kitId: string) {
+  return useQuery<any[]>({
+    queryKey: ['kit_combos', kitId],
+    queryFn: async () => {
+      if (!kitId) return [];
+      const { data, error } = await supabase
+        .from('kit_combos')
+        .select('*, kit_combo_items(*, products(*, brands(*), categories(*)))')
+        .eq('kit_id', kitId)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!kitId,
+  });
+}
+
+export function useCreateKitCombo() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (combo: { kit_id: string; name: string }) => {
+      const { data, error } = await supabase.from('kit_combos').insert(combo).select().single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['kit_combos', variables.kit_id] });
+    },
+  });
+}
+
+export function useUpdateKitCombo() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, name, kitId }: { id: string; name: string; kitId: string }) => {
+      const { data, error } = await supabase.from('kit_combos').update({ name }).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['kit_combos', variables.kitId] });
+    },
+  });
+}
+
+export function useDeleteKitCombo() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, kitId }: { id: string; kitId: string }) => {
+      const { error } = await supabase.from('kit_combos').delete().eq('id', id);
+      if (error) throw error;
+      return id;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['kit_combos', variables.kitId] });
+    },
+  });
+}
+
+export function useSaveComboItems() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ comboId, items }: { comboId: string; items: { product_id: string; quantity: number }[] }) => {
+      // First, delete all existing items for this combo
+      const { error: deleteError } = await supabase.from('kit_combo_items').delete().eq('combo_id', comboId);
+      if (deleteError) throw deleteError;
+
+      // Then insert the new ones if any
+      if (items.length > 0) {
+        const rows = items.map(item => ({
+          combo_id: comboId,
+          product_id: item.product_id,
+          quantity: item.quantity,
+        }));
+        const { error: insertError } = await supabase.from('kit_combo_items').insert(rows);
+        if (insertError) throw insertError;
+      }
+      return comboId;
+    },
+    onSuccess: (_, variables) => {
+      // Invalidate the kit_combos query so it refetches the items
+      queryClient.invalidateQueries({ queryKey: ['kit_combos'] });
+    },
+  });
+}
+
+export function useDeleteKitComboItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (itemId: string) => {
+      const { error } = await supabase.from('kit_combo_items').delete().eq('id', itemId);
+      if (error) throw error;
+      return itemId;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kit_combos'] });
+    },
+  });
+}
+
+export function useUpdateKitComboItemQuantity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
+      const { data, error } = await supabase.from('kit_combo_items').update({ quantity }).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kit_combos'] });
+    },
+  });
+}
 // ========== Brands ==========
 export function useBrands() {
   return useQuery<any[]>({

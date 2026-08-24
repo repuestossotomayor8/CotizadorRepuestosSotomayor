@@ -1,13 +1,14 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Quote, QuoteItem } from '@/types';
-import { useUpdateQuote, useBcvMultiplier } from '@/hooks/use-supabase';
-import { formatUSD } from '@/lib/utils';
+import { useUpdateQuote, useBcvMultiplier, useBcvRate } from '@/hooks/use-supabase';
+import { formatUSD, formatBs } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Calendar, User, Phone, CheckCircle, XCircle, FileText, MessageCircle, ShoppingCart } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useState } from 'react';
 import { generateQuotePDF } from '@/lib/generate-quote-pdf';
+import { copyQuoteToClipboard } from '@/lib/capture-quote';
 import { useCartStore } from '@/store/cart-store';
 
 interface QuoteDetailsDialogProps {
@@ -19,6 +20,7 @@ interface QuoteDetailsDialogProps {
 export function QuoteDetailsDialog({ open, onOpenChange, quote }: QuoteDetailsDialogProps) {
   const updateQuote = useUpdateQuote();
   const { data: bcvMultiplier = 1.4 } = useBcvMultiplier();
+  const { data: currentBcvRate = 36.5 } = useBcvRate();
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const { clearCart, setClientName, setClientPhone, addItem } = useCartStore();
 
@@ -41,7 +43,10 @@ export function QuoteDetailsDialog({ open, onOpenChange, quote }: QuoteDetailsDi
   const handleWhatsApp = async () => {
     if (!quote) return;
 
-    const phone = quote.client_phone?.replace(/[^0-9]/g, '') || '';
+    let phone = quote.client_phone?.replace(/[^0-9]/g, '') || '';
+    if (phone.length === 11 && phone.startsWith('0')) {
+      phone = '58' + phone.substring(1);
+    }
     if (!phone) {
       toast.error('Esta cotización no tiene número de teléfono');
       return;
@@ -49,9 +54,25 @@ export function QuoteDetailsDialog({ open, onOpenChange, quote }: QuoteDetailsDi
 
     setIsGeneratingPDF(true);
     try {
+      const WHATSAPP_PHRASES = [
+        "La pasión por servirte es el motor que nunca se apaga.",
+        "Tu confianza es el combustible; nuestra vocación, el motor.",
+        "Encendemos cada jornada con la meta de darte el mejor rendimiento.",
+        "Más que piezas de recambio, entregamos la potencia de un servicio comprometido.",
+        "Aceleramos soluciones para que tus proyectos nunca se detengan.",
+        "Alineamos cada detalle de nuestra atención a la altura de tu camino.",
+        "La tracción que necesitas para avanzar con total seguridad.",
+        "Calidad en cada repuesto, dirección firme en cada asesoría.",
+        "Sincronizamos nuestra dedicación para mantener tu marcha perfecta.",
+        "Atención precisa y repuestos firmes: el engranaje de tu tranquilidad.",
+        "Tu satisfacción es la fuerza que mueve cada uno de nuestros engranajes.",
+        "Ajustamos cada solución con la precisión que tu trabajo merece."
+      ];
+      const randomPhrase = WHATSAPP_PHRASES[Math.floor(Math.random() * WHATSAPP_PHRASES.length)];
+      const bcvRate = quote.bcv_rate || currentBcvRate;
+
       // Generate and download PDF first
-      const currency = 'usd';
-      const { blob, fileName } = await generateQuotePDF({ quote, currency, bcvMultiplier, returnBlob: true });
+      const { blob, fileName } = await generateQuotePDF({ quote, currency: 'both', bcvMultiplier, returnBlob: true, bcvRate, randomPhrase });
 
       if (blob) {
         const url = URL.createObjectURL(blob);
@@ -62,18 +83,28 @@ export function QuoteDetailsDialog({ open, onOpenChange, quote }: QuoteDetailsDi
         URL.revokeObjectURL(url);
       }
 
-      // Build WhatsApp message matching the main cart format
-      const totalBs = (quote.total_usd || 0) * (quote.bcv_rate || 1);
-      let msg = `*REPUESTOS SOTOMAYOR*\n_💵 Cotización en *DIVISAS (USD)*_\n\n`;
+      // Copiar imagen al portapapeles
+      try {
+        await copyQuoteToClipboard(quote, bcvMultiplier, bcvRate, randomPhrase);
+        toast.success('Imagen copiada. Presiona "Pegar" (Ctrl+V) en el chat de WhatsApp.', { duration: 5000 });
+      } catch (err) {
+        console.error('Failed to copy image to clipboard', err);
+      }
+
+      const totalBs = (quote.total_usd || 0) * bcvMultiplier * bcvRate;
+      let msg = `*REPUESTOS SOTOMAYOR*\n_Cotización en *DIVISAS Y BOLÍVARES*_\n\n`;
       if (quote.client_name) msg += `*Cliente:* ${quote.client_name}\n`;
       msg += `*Fecha:* ${date}\n\n`;
       msg += `*Detalle:*\n`;
       quote.quote_items?.forEach((item) => {
+        const priceUSD = item.unit_price_usd || 0;
+        const priceBs = priceUSD * bcvMultiplier * bcvRate;
         const brandSuffix = item.brand_name ? ` (${item.brand_name})` : '';
-        msg += `- ${item.quantity}x ${item.product_name}${brandSuffix} — ${formatUSD(item.unit_price_usd || 0)}\n`;
+        msg += `- ${item.quantity}x ${item.product_name}${brandSuffix}\n  USD: ${formatUSD(priceUSD)} | Bs: ${formatBs(priceBs)}\n`;
       });
       msg += `\n*Total USD:* ${formatUSD(quote.total_usd || 0)}\n`;
-      msg += `\n_📎 El PDF fue descargado. Adjúntalo a este chat._`;
+      msg += `*Total Bs:* ${formatBs(totalBs)}\n`;
+      msg += `\n_${randomPhrase}_`;
 
       const encoded = encodeURIComponent(msg);
       window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
@@ -97,13 +128,30 @@ export function QuoteDetailsDialog({ open, onOpenChange, quote }: QuoteDetailsDi
     setIsGeneratingPDF(true);
     
     try {
-      if (currency === 'both') {
-        await generateQuotePDF({ quote, currency: 'both', bcvMultiplier });
-        toast.success('📑 PDF con ambos precios (USD y Bs) generado');
-      } else {
-        await generateQuotePDF({ quote, currency, bcvMultiplier });
-        toast.success(`📄 PDF en ${currency === 'bcv' ? 'Bolívares' : 'USD'} generado`);
+      const WHATSAPP_PHRASES = [
+        "La pasión por servirte es el motor que nunca se apaga.",
+        "Tu confianza es el combustible; nuestra vocación, el motor.",
+        "Encendemos cada jornada con la meta de darte el mejor rendimiento.",
+        "Más que piezas de recambio, entregamos la potencia de un servicio comprometido.",
+        "Aceleramos soluciones para que tus proyectos nunca se detengan.",
+        "Alineamos cada detalle de nuestra atención a la altura de tu camino.",
+        "La tracción que necesitas para avanzar con total seguridad.",
+        "Calidad en cada repuesto, dirección firme en cada asesoría.",
+        "Sincronizamos nuestra dedicación para mantener tu marcha perfecta.",
+        "Atención precisa y repuestos firmes: el engranaje de tu tranquilidad.",
+        "Tu satisfacción es la fuerza que mueve cada uno de nuestros engranajes.",
+        "Ajustamos cada solución con la precisión que tu trabajo merece."
+      ];
+      const randomPhrase = WHATSAPP_PHRASES[Math.floor(Math.random() * WHATSAPP_PHRASES.length)];
+
+      try {
+        await copyQuoteToClipboard(quote, bcvMultiplier, currentBcvRate, randomPhrase, currency);
+      } catch (err) {
+        console.error('Failed to copy image to clipboard', err);
       }
+
+      await generateQuotePDF({ quote, currency, bcvMultiplier, randomPhrase, bcvRate: currentBcvRate });
+      toast.success(`📄 PDF y Captura en ${currency === 'both' ? 'ambos precios' : currency === 'bcv' ? 'Bolívares (Bs)' : 'Divisas (USD)'} generados`);
     } catch (error) {
       console.error('PDF generation error:', error);
       toast.error('Error al generar el PDF');

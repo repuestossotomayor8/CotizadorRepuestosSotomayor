@@ -53,11 +53,27 @@ export function Header() {
           </h1>
         </div>
         <div className="relative hidden md:block shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-          <input
-            placeholder="Búsqueda global..."
-            className="pl-9 pr-3 w-[180px] lg:w-[240px] h-[32px] rounded-md bg-slate-100 border-none text-[12px] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all"
-          />
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const form = e.target as HTMLFormElement;
+            const input = form.elements.namedItem('globalSearch') as HTMLInputElement;
+            const val = input.value.trim();
+            if (val) {
+              window.dispatchEvent(new CustomEvent('navigate-tab', { detail: { tab: 'inventory' } }));
+              setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('global-search', { detail: { query: val } }));
+              }, 50);
+              input.value = '';
+              input.blur();
+            }
+          }}>
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <input
+              name="globalSearch"
+              placeholder="Búsqueda global..."
+              className="pl-9 pr-3 w-[180px] lg:w-[240px] h-[32px] rounded-md bg-slate-100 border-none text-[12px] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all"
+            />
+          </form>
         </div>
       </div>
 

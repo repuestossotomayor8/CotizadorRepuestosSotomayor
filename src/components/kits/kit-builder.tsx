@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Kit, Product, CartItem } from '@/types';
-import { useKitItems, useCreateKitItem, useDeleteKitItem, useDeleteProduct, useUpdateProduct, useProducts, useBcvRate, useBcvMultiplier } from '@/hooks/use-supabase';
+import { useKitItems, useCreateKitItem, useDeleteKitItem, useDeleteProduct, useUpdateProduct, useProducts, useBcvRate, useBcvMultiplier, useKitCombos, useCreateKitCombo, useUpdateKitCombo, useDeleteKitCombo, useSaveComboItems, useDeleteKitComboItem, useUpdateKitComboItemQuantity } from '@/hooks/use-supabase';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCartStore } from '@/store/cart-store';
 import { formatUSD } from '@/lib/utils';
-import { ArrowLeft, Plus, Search, Trash2, Package, ShoppingCart, Ruler, Pencil, Unlink, DollarSign, Loader2, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Trash2, Package, ShoppingCart, Ruler, Pencil, Unlink, DollarSign, Loader2, Eye, EyeOff, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { ImageGalleryDialog } from '@/components/inventory/image-gallery-dialog';
@@ -28,6 +28,23 @@ export function KitBuilder({ kit, onBack }: KitBuilderProps) {
   const { data: bcvMultiplier = 1.4 } = useBcvMultiplier();
   const queryClient = useQueryClient();
 
+  // Combos
+  const { data: kitCombos = [], isLoading: isLoadingCombos } = useKitCombos(kit.id);
+  const createKitCombo = useCreateKitCombo();
+  const updateKitCombo = useUpdateKitCombo();
+  const deleteKitCombo = useDeleteKitCombo();
+  const saveComboItems = useSaveComboItems();
+  const deleteKitComboItem = useDeleteKitComboItem();
+  const updateKitComboItemQuantity = useUpdateKitComboItemQuantity();
+
+  const [activeTab, setActiveTab] = useState<'inventory' | 'combos'>('inventory');
+  const [selectedComboId, setSelectedComboId] = useState<string | null>(null);
+  const [newComboName, setNewComboName] = useState('');
+  const [comboItemsState, setComboItemsState] = useState<Record<string, number>>({});
+  const [pendingQuantityChanges, setPendingQuantityChanges] = useState<Record<string, number>>({});
+  const [comboSearchQuery, setComboSearchQuery] = useState('');
+  const [comboFilterCategory, setComboFilterCategory] = useState('all');
+
   const [galleryProduct, setGalleryProduct] = useState<Product | null>(null);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [filterQuery, setFilterQuery] = useState('');
@@ -35,6 +52,8 @@ export function KitBuilder({ kit, onBack }: KitBuilderProps) {
   const [hideZeroStock, setHideZeroStock] = useState(false);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isComboDialogOpen, setIsComboDialogOpen] = useState(false);
+  const [editingComboId, setEditingComboId] = useState<string | null>(null);
   const [linkSearchQuery, setLinkSearchQuery] = useState('');
 
   // Bulk price editing state
@@ -43,6 +62,32 @@ export function KitBuilder({ kit, onBack }: KitBuilderProps) {
   const [bulkPriceCostValue, setBulkPriceCostValue] = useState('');
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [togglingLineKey, setTogglingLineKey] = useState<string | null>(null);
+
+  const handleSaveQuantityChanges = async (comboId: string) => {
+    const combo = kitCombos.find(c => c.id === comboId);
+    if (!combo) return;
+
+    const changes = combo.kit_combo_items
+      .filter((item: any) => pendingQuantityChanges[item.id] !== undefined && pendingQuantityChanges[item.id] !== item.quantity)
+      .map((item: any) => ({
+        id: item.id,
+        quantity: pendingQuantityChanges[item.id]
+      }));
+
+    if (changes.length === 0) return;
+
+    try {
+      await Promise.all(changes.map((c: any) => updateKitComboItemQuantity.mutateAsync(c)));
+      setPendingQuantityChanges(prev => {
+        const next = { ...prev };
+        changes.forEach((c: any) => delete next[c.id]);
+        return next;
+      });
+      toast.success('Cantidades guardadas exitosamente');
+    } catch (error) {
+      toast.error('Error al guardar cantidades');
+    }
+  };
 
   const handleToggleLineWebStatus = async (items: any[], brandName: string, categoryName: string) => {
     const lineKey = `${categoryName}-${brandName}`;
@@ -89,6 +134,16 @@ export function KitBuilder({ kit, onBack }: KitBuilderProps) {
       )
       .slice(0, 15); // Show max 15 results
   }, [linkSearchQuery, products, kitItems]);
+
+  const comboCategories = useMemo(() => {
+    const cats = new Set<string>();
+    kitItems.forEach(item => {
+      if (item.products?.categories?.name) {
+        cats.add(item.products.categories.name);
+      }
+    });
+    return Array.from(cats).sort();
+  }, [kitItems]);
 
   const handleLinkProduct = async (product: Product) => {
     try {
@@ -312,6 +367,106 @@ export function KitBuilder({ kit, onBack }: KitBuilderProps) {
     toast.success(`${addedCount} repuestos añadidos al carrito`);
   };
 
+  const handleLoadCombo = (comboId: string) => {
+    const combo = kitCombos.find(c => c.id === comboId);
+    if (!combo || !combo.kit_combo_items || combo.kit_combo_items.length === 0) {
+      toast.error('Este combo está vacío o no se encontró');
+      return;
+    }
+    
+    let addedCount = 0;
+    combo.kit_combo_items.forEach((item: any) => {
+      if (item.products) {
+        const product = item.products;
+        addItem({
+          product_id: product.id,
+          product_name: product.name,
+          product_code: product.code,
+          quantity: item.quantity || 1,
+          unit_price_usd: product.price_usd || 0,
+          image_url: product.image_url,
+          brand_name: product.brands?.name,
+          brand_logo_url: product.brands?.logo_url,
+          stock: product.stock,
+        });
+        addedCount++;
+      }
+    });
+    toast.success(`${addedCount} repuestos del combo "${combo.name}" añadidos al carrito`);
+  };
+
+  const handleSaveCombo = async () => {
+    if (!newComboName.trim()) {
+      toast.error('Ingresa un nombre para el combo');
+      return;
+    }
+    
+    // Check if comboItemsState has at least one item
+    const hasItems = Object.values(comboItemsState).some(q => q > 0);
+    if (!hasItems) {
+      toast.error('Selecciona al menos un repuesto para el combo');
+      return;
+    }
+
+    try {
+      let comboId = editingComboId;
+      
+      if (!comboId) {
+        const combo = await createKitCombo.mutateAsync({
+          kit_id: kit.id,
+          name: newComboName.trim()
+        });
+        if (combo && combo.id) {
+          comboId = combo.id;
+        }
+      } else {
+        await updateKitCombo.mutateAsync({
+          id: comboId,
+          name: newComboName.trim(),
+          kitId: kit.id
+        });
+      }
+      
+      if (comboId) {
+        const itemsToSave = Object.entries(comboItemsState)
+          .filter(([_, q]) => q > 0)
+          .map(([productId, quantity]) => ({
+            kit_combo_id: comboId,
+            product_id: productId,
+            quantity
+          }));
+          
+        await saveComboItems.mutateAsync({
+          comboId,
+          items: itemsToSave
+        });
+        
+        toast.success(editingComboId ? 'Combo actualizado' : 'Combo creado exitosamente');
+        setIsComboDialogOpen(false);
+        setNewComboName('');
+        setComboItemsState({});
+        setEditingComboId(null);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al guardar el combo');
+    }
+  };
+
+  const handleEditCombo = (combo: any) => {
+    setNewComboName(combo.name);
+    setEditingComboId(combo.id);
+    
+    const state: Record<string, number> = {};
+    if (combo.kit_combo_items) {
+      combo.kit_combo_items.forEach((item: any) => {
+        state[item.product_id] = item.quantity;
+      });
+    }
+    setComboItemsState(state);
+    setIsComboDialogOpen(true);
+  };
+
   // Categories that support bulk price editing
   const BULK_PRICE_CATEGORIES = ['piston', 'pistones', 'anillo', 'anillos', 'biela', 'bielas', 'bancada', 'bancadas', 'concha', 'conchas', 'valvula', 'valvulas', 'taquete', 'taquetes', 'empacadura', 'empacaduras'];
 
@@ -390,28 +545,31 @@ export function KitBuilder({ kit, onBack }: KitBuilderProps) {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Buscar en el motor..."
+              placeholder={`Buscar en ${kit.category.toLowerCase() === 'motor' ? 'el motor' : kit.category.toLowerCase()}...`}
               value={filterQuery}
               onChange={(e) => setFilterQuery(e.target.value)}
               className="w-[200px] pl-9 pr-3 h-[36px] rounded bg-white border border-slate-200 text-[13px] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 focus:border-emerald-500/40 transition-all"
             />
           </div>
-          <div className="relative">
-            <Ruler className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-            <select
-              value={measureFilter}
-              onChange={(e) => setMeasureFilter(e.target.value)}
-              className={`pl-9 pr-8 h-[36px] rounded border text-[13px] font-medium appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-500/40 focus:border-emerald-500/40 transition-all ${
-                measureFilter !== 'all'
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                  : 'bg-white border-slate-200 text-slate-700'
-              }`}
-            >
-              {MEASURE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
+          
+          {kit.category.toLowerCase() === 'motor' && (
+            <div className="relative">
+              <Ruler className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <select
+                value={measureFilter}
+                onChange={(e) => setMeasureFilter(e.target.value)}
+                className={`pl-9 pr-8 h-[36px] rounded border text-[13px] font-medium appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-500/40 focus:border-emerald-500/40 transition-all ${
+                  measureFilter !== 'all'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                    : 'bg-white border-slate-200 text-slate-700'
+                }`}
+              >
+                {MEASURE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <button
             onClick={() => setHideZeroStock(!hideZeroStock)}
             className={`flex items-center gap-2 px-3 h-[36px] rounded border text-[13px] font-medium transition-all shrink-0 select-none cursor-pointer ${
@@ -438,39 +596,76 @@ export function KitBuilder({ kit, onBack }: KitBuilderProps) {
             <Plus className="w-4 h-4" />
             Vincular Repuesto
           </Button>
-          <Button 
-            onClick={handleAddAllToCart}
-            disabled={filteredItems.length === 0}
-            className="gap-2 bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm h-[36px]"
-          >
-            <ShoppingCart className="w-4 h-4" />
-            Cargar Todo al Carrito
-          </Button>
+          
+          {kitCombos.length > 0 ? (
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {kitCombos.map((combo) => (
+                <Button
+                  key={combo.id}
+                  onClick={() => handleLoadCombo(combo.id)}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white text-[13px] font-semibold h-[36px] gap-2 px-3 shadow-sm"
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  Cargar {combo.name} al carrito
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <Button 
+              onClick={handleAddAllToCart}
+              disabled={filteredItems.length === 0}
+              className="gap-2 bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm h-[36px]"
+            >
+              <ShoppingCart className="w-4 h-4" />
+              Cargar Todo
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* Body: Groups */}
-      <div className="flex-1 overflow-auto p-6">
-        {kitItems.length === 0 ? (
-          <div className="max-w-md mx-auto text-center py-20">
-            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Package className="w-8 h-8 text-slate-400" />
+      {/* Tabs */}
+      <div className="bg-white border-b border-slate-200 px-4 md:px-6 flex items-center gap-6">
+        <button
+          onClick={() => setActiveTab('inventory')}
+          className={`py-3 text-sm font-semibold border-b-2 transition-colors ${
+            activeTab === 'inventory' ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Inventario del Cotizador
+        </button>
+        <button
+          onClick={() => setActiveTab('combos')}
+          className={`py-3 text-sm font-semibold border-b-2 transition-colors ${
+            activeTab === 'combos' ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Configurar Combos
+        </button>
+      </div>
+
+      {/* Body: Inventory */}
+      {activeTab === 'inventory' && (
+        <div className="flex-1 overflow-auto p-6">
+          {kitItems.length === 0 ? (
+            <div className="max-w-md mx-auto text-center py-20">
+              <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Package className="w-8 h-8 text-slate-400" />
+              </div>
+              <h3 className="text-[16px] font-bold text-slate-900 mb-2">Este cotizador está vacío</h3>
+              <p className="text-[13px] text-slate-500 mb-6">
+                Vincula repuestos a este cotizador desde el formulario de cada producto en el inventario o agrégalos directamente ahora.
+              </p>
+              <div className="flex justify-center gap-3">
+                <Button 
+                  onClick={() => setIsLinkDialogOpen(true)}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Vincular Repuesto
+                </Button>
+              </div>
             </div>
-            <h3 className="text-[16px] font-bold text-slate-900 mb-2">Este cotizador está vacío</h3>
-            <p className="text-[13px] text-slate-500 mb-6">
-              Vincula repuestos a este cotizador desde el formulario de cada producto en el inventario o agrégalos directamente ahora.
-            </p>
-            <div className="flex justify-center gap-3">
-              <Button 
-                onClick={() => setIsLinkDialogOpen(true)}
-                className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Vincular Repuesto
-              </Button>
-            </div>
-          </div>
-        ) : filteredItems.length === 0 ? (
+          ) : filteredItems.length === 0 ? (
           <div className="max-w-md mx-auto text-center py-20">
             <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Package className="w-8 h-8 text-slate-400" />
@@ -833,6 +1028,206 @@ export function KitBuilder({ kit, onBack }: KitBuilderProps) {
           </div>
         )}
       </div>
+      )}
+
+      {/* Body: Combos */}
+      {activeTab === 'combos' && (
+        <div className="flex-1 overflow-auto p-6">
+          <div className="max-w-4xl mx-auto space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Configurar Combos</h2>
+                <p className="text-sm text-slate-500">
+                  Crea y administra combos predefinidos para {kit.name}.
+                </p>
+              </div>
+              <Button 
+                onClick={() => {
+                  setNewComboName('');
+                  setEditingComboId(null);
+                  setComboItemsState({});
+                  setIsComboDialogOpen(true);
+                }}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Nuevo Combo
+              </Button>
+            </div>
+            
+            {kitCombos.length === 0 ? (
+              <div className="text-center py-12 bg-slate-50 rounded-lg border border-slate-200 border-dashed">
+                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm">
+                  <Package className="w-6 h-6 text-slate-400" />
+                </div>
+                <h3 className="text-[15px] font-bold text-slate-900 mb-1">No hay combos configurados</h3>
+                <p className="text-[13px] text-slate-500">
+                  Crea tu primer combo para añadir grupos de repuestos más rápido al carrito.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {kitCombos.map(combo => (
+                  <div key={combo.id} className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-bold text-slate-900">{combo.name}</h3>
+                      <div className="flex items-center gap-3">
+                        <Button
+                          size="sm"
+                          onClick={() => handleLoadCombo(combo.id)}
+                          className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 hover:text-emerald-800 text-xs font-semibold h-8"
+                        >
+                          <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
+                          Cargar al Carrito
+                        </Button>
+                        <div className="flex gap-2 border-l border-slate-200 pl-3">
+                          <button 
+                            onClick={() => handleEditCombo(combo)}
+                            className="text-slate-400 hover:text-emerald-600 transition-colors"
+                            title="Editar Combo"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => {
+                              if (confirm(`¿Estás seguro de eliminar el combo "${combo.name}"?`)) {
+                                deleteKitCombo.mutate({ id: combo.id, kitId: kit.id });
+                              }
+                            }}
+                            className="text-slate-400 hover:text-red-600 transition-colors"
+                            title="Eliminar Combo"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    {(() => {
+                      const comboHasChanges = combo.kit_combo_items?.some((item: any) => 
+                        pendingQuantityChanges[item.id] !== undefined && pendingQuantityChanges[item.id] !== item.quantity
+                      );
+                      
+                      return (
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm text-slate-500">
+                              {combo.kit_combo_items?.length || 0} repuestos en este combo
+                            </div>
+                            {comboHasChanges && (
+                              <Button 
+                                size="sm" 
+                                onClick={() => handleSaveQuantityChanges(combo.id)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white h-7 text-xs px-3"
+                                disabled={updateKitComboItemQuantity.isPending}
+                              >
+                                Guardar Cambios
+                              </Button>
+                            )}
+                          </div>
+                          
+                          {/* Minimized preview of items */}
+                          {combo.kit_combo_items && combo.kit_combo_items.length > 0 && (
+                            <div className="flex flex-col gap-3 mt-3">
+                              {(() => {
+                                const grouped = combo.kit_combo_items.reduce((acc: any, item: any) => {
+                                  const cat = item.products?.categories?.name || 'Sin Categoría';
+                                  if (!acc[cat]) acc[cat] = [];
+                                  acc[cat].push(item);
+                                  return acc;
+                                }, {});
+
+                                return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([categoryName, items]: [string, any]) => (
+                                  <div key={categoryName} className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                                    <h4 className="text-[13px] font-bold text-emerald-700 uppercase tracking-wider mb-2 px-1">
+                                      {categoryName}
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                      {items.map((item: any) => {
+                                        const displayQuantity = pendingQuantityChanges[item.id] !== undefined ? pendingQuantityChanges[item.id] : item.quantity;
+                                        return (
+                                          <div 
+                                            key={item.id} 
+                                            className="group flex items-center justify-between bg-white border border-slate-200 rounded-md p-2 hover:border-emerald-300 transition-colors shadow-sm"
+                                          >
+                                            <div className="flex items-center gap-3 overflow-hidden">
+                                              <div className="flex items-center bg-slate-100 rounded border border-slate-200 shrink-0 h-6">
+                                                <button 
+                                                  onClick={() => {
+                                                    if (displayQuantity > 1) {
+                                                      setPendingQuantityChanges(prev => ({ ...prev, [item.id]: displayQuantity - 1 }));
+                                                    } else {
+                                                      if (confirm(`¿Estás seguro de quitar "${item.products?.name}" del combo?`)) {
+                                                        deleteKitComboItem.mutate(item.id);
+                                                      }
+                                                    }
+                                                  }}
+                                                  className="px-1.5 h-full text-slate-500 hover:text-emerald-600 hover:bg-slate-200 transition-colors flex items-center justify-center font-bold text-xs"
+                                                >
+                                                  -
+                                                </button>
+                                                <span className={`font-bold text-[11px] w-4 text-center ${displayQuantity !== item.quantity ? 'text-emerald-600' : 'text-slate-700'}`}>
+                                                  {displayQuantity}
+                                                </span>
+                                                <button 
+                                                  onClick={() => setPendingQuantityChanges(prev => ({ ...prev, [item.id]: displayQuantity + 1 }))}
+                                                  className="px-1.5 h-full text-slate-500 hover:text-emerald-600 hover:bg-slate-200 transition-colors flex items-center justify-center font-bold text-xs"
+                                                >
+                                                  +
+                                                </button>
+                                              </div>
+                                        
+                                        <div className="flex flex-col min-w-0">
+                                          <span className="text-[11px] font-medium text-slate-900 truncate" title={item.products?.name}>
+                                            {item.products?.name || 'Repuesto no encontrado'}
+                                          </span>
+                                          <div className="flex items-center gap-2 mt-0.5">
+                                            <span className="text-[10px] text-slate-500">{item.products?.code || 'Sin código'}</span>
+                                            {item.products?.brands?.logo_url ? (
+                                              <img 
+                                                src={item.products.brands.logo_url} 
+                                                alt={item.products.brands.name} 
+                                                className="h-3 w-auto object-contain max-w-[40px]" 
+                                                title={item.products.brands.name}
+                                              />
+                                            ) : item.products?.brands?.name ? (
+                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                                {item.products.brands.name}
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <button
+                                        onClick={() => {
+                                          if (confirm(`¿Estás seguro de quitar "${item.products?.name}" del combo?`)) {
+                                            deleteKitComboItem.mutate(item.id);
+                                          }
+                                        }}
+                                        className="text-slate-300 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 transition-all sm:opacity-0 sm:group-hover:opacity-100 shrink-0"
+                                        title="Quitar repuesto del combo"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                                </div>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <ImageGalleryDialog
         open={!!galleryProduct}
@@ -1066,6 +1461,156 @@ export function KitBuilder({ kit, onBack }: KitBuilderProps) {
                 )}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isComboDialogOpen} onOpenChange={setIsComboDialogOpen}>
+        <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden bg-slate-50 max-h-[85vh] flex flex-col">
+          <DialogHeader className="p-6 pb-4 border-b border-slate-200 bg-white shrink-0">
+            <DialogTitle className="text-lg font-bold text-slate-900">
+              {editingComboId ? 'Editar Combo' : 'Crear Nuevo Combo'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="p-6 flex-1 overflow-y-auto">
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Nombre del Combo
+                </label>
+                <input
+                  type="text"
+                  value={newComboName}
+                  onChange={e => setNewComboName(e.target.value)}
+                  placeholder="Ej: Combo MOOG, Combo Económico..."
+                  className="w-full px-4 h-[42px] rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Selecciona los repuestos a incluir en este combo
+                </label>
+                <div className="flex gap-2 mb-3">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nombre, código o marca..."
+                      value={comboSearchQuery}
+                      onChange={(e) => setComboSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 h-[38px] rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+                  <select
+                    value={comboFilterCategory}
+                    onChange={e => setComboFilterCategory(e.target.value)}
+                    className="h-[38px] px-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white"
+                  >
+                    <option value="all">Todas las Categorías</option>
+                    {comboCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="border border-slate-200 rounded-lg bg-white overflow-hidden">
+                  <div className="max-h-[300px] overflow-y-auto divide-y divide-slate-100">
+                    {kitItems.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-slate-500">No hay repuestos en el cotizador</div>
+                    ) : (
+                      kitItems
+                        .filter(item => {
+                          const prod = item.products;
+                          if (!prod) return false;
+                          
+                          if (comboFilterCategory !== 'all') {
+                            if (prod.categories?.name !== comboFilterCategory) return false;
+                          }
+
+                          if (!comboSearchQuery) return true;
+                          const q = comboSearchQuery.toLowerCase();
+                          return (
+                            prod.name.toLowerCase().includes(q) || 
+                            (prod.code && prod.code.toLowerCase().includes(q)) ||
+                            (prod.brands?.name && prod.brands.name.toLowerCase().includes(q))
+                          );
+                        })
+                        .map((item) => {
+                          const product = item.products;
+                          if (!product) return null;
+                        const qty = comboItemsState[product.id] || 0;
+                        const isSelected = qty > 0;
+                        return (
+                          <div key={item.id} className="p-3 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                            <div className="flex items-center gap-3 flex-1 min-w-0 pr-4">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  setComboItemsState(prev => ({
+                                    ...prev,
+                                    [product.id]: e.target.checked ? (item.quantity || 1) : 0
+                                  }));
+                                }}
+                                className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-slate-900 truncate">{product.name}</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                    {product.code}
+                                  </span>
+                                  {product.brands && (
+                                    <div className="flex items-center">
+                                      {product.brands.logo_url ? (
+                                        <img src={product.brands.logo_url} alt={product.brands.name} className="h-4 object-contain max-w-[50px]" />
+                                      ) : (
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase">
+                                          {product.brands.name}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-xs text-slate-500">Cant:</span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={qty}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value) || 1;
+                                    setComboItemsState(prev => ({
+                                      ...prev,
+                                      [product.id]: val
+                                    }));
+                                  }}
+                                  className="w-16 h-8 px-2 border border-slate-200 rounded text-sm focus:outline-none focus:border-emerald-500 text-center"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="p-4 bg-white border-t border-slate-200 flex justify-end gap-3 shrink-0">
+            <Button variant="outline" onClick={() => setIsComboDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleSaveCombo}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              Guardar Combo
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
