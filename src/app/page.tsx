@@ -61,6 +61,7 @@ export default function HomePage() {
           <Header />
           <main className="flex-1 overflow-auto p-3 md:p-5 bg-slate-50 min-w-0">
             {activeTab === 'inventory' && <ProductTable key={showRecentImports ? 'recents' : 'normal'} showRecentsOnMount={showRecentImports} />}
+            {activeTab === 'miscellaneous' && <ProductTable key="miscellaneous" isMiscellaneous={true} />}
             {activeTab === 'categories' && <ClasificacionesContainer />}
             {activeTab === 'quotes' && <QuoteTable />}
             {activeTab === 'sales' && <SalesDashboard />}

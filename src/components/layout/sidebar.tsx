@@ -10,6 +10,7 @@ import {
   Cog,
   Wrench,
   History,
+  Droplets,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -20,6 +21,7 @@ const navItems = [
   { icon: ShoppingCart, label: 'Ventas', id: 'sales' },
   { icon: Cog, label: 'Motor', id: 'motor_kits' },
   { icon: Wrench, label: 'T. Delantero', id: 'tren_delantero_kits' },
+  { icon: Droplets, label: 'Misceláneos', id: 'miscellaneous' },
   { icon: History, label: 'Historial', id: 'history' },
 ];
 

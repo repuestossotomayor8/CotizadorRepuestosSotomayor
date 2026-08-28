@@ -37,9 +37,10 @@ interface ProductFormDialogProps {
   onOpenChange: (open: boolean) => void;
   product: Product | null;
   initialCompatibleKitId?: string;
+  defaultCategoryId?: string;
 }
 
-export function ProductFormDialog({ open, onOpenChange, product, initialCompatibleKitId }: ProductFormDialogProps) {
+export function ProductFormDialog({ open, onOpenChange, product, initialCompatibleKitId, defaultCategoryId }: ProductFormDialogProps) {
   const isEditing = !!product;
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
@@ -142,7 +143,7 @@ export function ProductFormDialog({ open, onOpenChange, product, initialCompatib
           code: '',
           name: '',
           description: '',
-          category_id: '',
+          category_id: defaultCategoryId || '',
           brand_id: '',
           cost: 0,
           price_usd: 0,

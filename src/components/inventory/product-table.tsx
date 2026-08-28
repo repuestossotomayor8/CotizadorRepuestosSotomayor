@@ -26,9 +26,10 @@ const columnHelper = createColumnHelper<Product>();
 
 interface ProductTableProps {
   showRecentsOnMount?: boolean;
+  isMiscellaneous?: boolean;
 }
 
-export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
+export function ProductTable({ showRecentsOnMount, isMiscellaneous }: ProductTableProps) {
   const { data: products = [], isLoading } = useProducts();
   const { data: bcvRate = 36.5 } = useBcvRate();
   const { data: bcvMultiplier = 1.4 } = useBcvMultiplier();
@@ -62,6 +63,32 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [editCost, setEditCost] = useState('');
   const [editPrice, setEditPrice] = useState('');
+
+  // Identify categories for Misceláneos (Aceites y Lubricantes)
+  const miscCategoryIds = useMemo(() => {
+    return categories
+      .filter((c) =>
+        (c.name.toLowerCase().includes('aceite') && !c.name.toLowerCase().includes('bomba')) ||
+        c.name.toLowerCase().includes('lubricante') ||
+        c.name.toLowerCase().includes('miscel') ||
+        c.section === 'Misceláneos' ||
+        c.section === 'Miscelaneos' ||
+        c.id === 'd5ee462b-e3a2-4f6c-94f1-529ac9686fa6'
+      )
+      .map((c) => c.id);
+  }, [categories]);
+
+  // Base products filtered by section if isMiscellaneous is active
+  const targetProducts = useMemo(() => {
+    if (!isMiscellaneous) return products;
+    return products.filter((p) => {
+      if (p.category_id && miscCategoryIds.includes(p.category_id)) return true;
+      const catName = p.categories?.name?.toLowerCase() || '';
+      if (catName.includes('aceite') && !catName.includes('bomba')) return true;
+      if (catName.includes('lubricante') || catName.includes('miscel')) return true;
+      return false;
+    });
+  }, [products, isMiscellaneous, miscCategoryIds]);
 
   // Listen for open-product events from notification panel
   useEffect(() => {
@@ -99,12 +126,12 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
   // Fuzzy search
   const fuse = useMemo(
     () =>
-      new Fuse(products, {
+      new Fuse(targetProducts, {
         keys: ['code', 'name', 'description'],
         threshold: 0.3,
         includeScore: true,
       }),
-    [products]
+    [targetProducts]
   );
 
   const isFiltering = searchQuery || categoryFilter !== 'all' || brandFilter !== 'all' || stockFilter !== 'all' || webStatusFilter !== 'all' || priceFilter !== 'all' || imageFilter !== 'all' || recentsOnly;
@@ -112,7 +139,7 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
   const filteredProducts = useMemo(() => {
     let result = searchQuery
       ? fuse.search(searchQuery).map((r) => r.item)
-      : products;
+      : targetProducts;
 
     if (categoryFilter !== 'all') {
       result = result.filter((p) => p.category_id === categoryFilter);
@@ -495,13 +522,17 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
 
   // Group categories by section
   const categoryGroups = useMemo(() => {
+    const relevantCategories = isMiscellaneous
+      ? categories.filter((c) => miscCategoryIds.includes(c.id))
+      : categories;
     const groups: Record<string, typeof categories> = {};
-    categories.forEach((c) => {
-      if (!groups[c.section]) groups[c.section] = [];
-      groups[c.section].push(c);
+    relevantCategories.forEach((c) => {
+      const section = c.section || 'General';
+      if (!groups[section]) groups[section] = [];
+      groups[section].push(c);
     });
     return groups;
-  }, [categories]);
+  }, [categories, isMiscellaneous, miscCategoryIds]);
 
   const handleEditProduct = (product: Product) => {
     setSelectedProduct(product);
@@ -565,9 +596,13 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
       <div className="flex items-center justify-between p-3 md:p-4 border-b border-slate-200">
         <div className="flex items-center gap-2 md:gap-3">
           <h2 className="text-[15px] md:text-[18px] font-bold text-slate-900">
-            {categoryFilter !== 'all'
-              ? categories.find((c) => c.id === categoryFilter)?.name || 'Lista de Repuestos'
-              : 'Catálogo de Repuestos'}
+            {isMiscellaneous
+              ? (categoryFilter !== 'all'
+                  ? categories.find((c) => c.id === categoryFilter)?.name || 'Misceláneos'
+                  : 'Catálogo de Misceláneos (Aceites y Lubricantes)')
+              : (categoryFilter !== 'all'
+                  ? categories.find((c) => c.id === categoryFilter)?.name || 'Lista de Repuestos'
+                  : 'Catálogo de Repuestos')}
           </h2>
           <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100 text-[10px] font-bold uppercase tracking-widest border-none px-3 py-1 rounded-md hidden sm:block">
             {filteredProducts.length} ÍTEMS
@@ -976,7 +1011,8 @@ export function ProductTable({ showRecentsOnMount }: ProductTableProps) {
       <ProductFormDialog 
         open={isDialogOpen} 
         onOpenChange={setIsDialogOpen} 
-        product={selectedProduct} 
+        product={selectedProduct}
+        defaultCategoryId={isMiscellaneous ? (miscCategoryIds[0] || 'd5ee462b-e3a2-4f6c-94f1-529ac9686fa6') : undefined}
       />
 
       <ProductHistoryDialog
