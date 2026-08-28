@@ -168,9 +168,9 @@ export function QuoteDetailsDialog({ open, onOpenChange, quote }: QuoteDetailsDi
     
     quote.quote_items?.forEach((item) => {
       addItem({
-        product_id: item.product_id,
+        product_id: item.product_id || item.id || `manual-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         product_name: item.product_name,
-        product_code: item.product_code,
+        product_code: item.product_code || '',
         quantity: item.quantity,
         unit_price_usd: item.unit_price_usd,
         brand_name: item.brand_name || undefined,

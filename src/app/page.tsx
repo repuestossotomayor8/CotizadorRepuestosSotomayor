@@ -13,6 +13,7 @@ import { QuoteCart } from '@/components/quotes/quote-cart';
 import { SettingsDialog } from '@/components/layout/settings-dialog';
 import { KitTable } from '@/components/kits/kit-table';
 import { KitBuilder } from '@/components/kits/kit-builder';
+import { ManualQuoteBuilder } from '@/components/quotes/manual-quote-builder';
 import { ChangeHistoryPage } from '@/components/inventory/change-history-page';
 import { AiQueueBanner } from '@/components/inventory/ai-queue-banner';
 import { Kit } from '@/types';
@@ -64,6 +65,7 @@ export default function HomePage() {
             {activeTab === 'miscellaneous' && <ProductTable key="miscellaneous" isMiscellaneous={true} />}
             {activeTab === 'categories' && <ClasificacionesContainer />}
             {activeTab === 'quotes' && <QuoteTable />}
+            {activeTab === 'manual_quote' && <ManualQuoteBuilder />}
             {activeTab === 'sales' && <SalesDashboard />}
             {activeTab === 'motor_kits' && (
               selectedKit ? (

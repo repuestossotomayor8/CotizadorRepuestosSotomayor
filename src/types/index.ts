@@ -51,6 +51,7 @@ export interface Quote {
   total_usd: number;
   bcv_rate: number;
   status: string;
+  notes?: string;
   created_at?: string;
   quote_items?: QuoteItem[];
 }
@@ -58,9 +59,9 @@ export interface Quote {
 export interface QuoteItem {
   id?: string;
   quote_id?: string;
-  product_id: string;
+  product_id?: string | null;
   product_name: string;
-  product_code: string;
+  product_code?: string;
   quantity: number;
   unit_price_usd: number;
   brand_name?: string;
@@ -69,6 +70,8 @@ export interface QuoteItem {
 
 // Cart item extends QuoteItem with product info for display
 export interface CartItem extends QuoteItem {
+  product_id: string;
+  product_code: string;
   image_url?: string;
   brand_name?: string;
   brand_logo_url?: string;

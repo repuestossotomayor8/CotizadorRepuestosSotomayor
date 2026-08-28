@@ -336,13 +336,15 @@ export function QuoteCart() {
                         <button
                           type="button"
                           onClick={() => {
-                            navigator.clipboard.writeText(item.product_code);
-                            toast.success(`Código copiado: ${item.product_code}`);
+                            if (item.product_code) {
+                              navigator.clipboard.writeText(item.product_code);
+                              toast.success(`Código copiado: ${item.product_code}`);
+                            }
                           }}
                           className="text-[10px] font-mono text-slate-500 uppercase tracking-wide hover:text-emerald-600 cursor-pointer transition-colors"
                           title="Clic para copiar código"
                         >
-                          {item.product_code}
+                          {item.product_code || '—'}
                         </button>
                         {item.brand_logo_url ? (
                           <img 
