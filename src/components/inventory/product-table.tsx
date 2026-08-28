@@ -287,12 +287,12 @@ export function ProductTable({ showRecentsOnMount, isMiscellaneous }: ProductTab
       columnHelper.display({
         id: 'image',
         header: 'IMG',
-        size: 70,
+        size: isMiscellaneous ? 100 : 70,
         cell: ({ row }) => {
           const hasImage = row.original.image_url || (row.original.image_urls && row.original.image_urls.length > 0);
           return (
             <div 
-              className={`w-full aspect-square rounded bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200 transition-colors ${hasImage ? 'cursor-pointer hover:border-emerald-500' : ''}`}
+              className={`${isMiscellaneous ? 'w-20 h-20 min-w-[80px] min-h-[80px]' : 'w-full aspect-square'} rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200 transition-colors ${hasImage ? 'cursor-pointer hover:border-emerald-500' : ''}`}
               onClick={(e) => {
                 if (hasImage) {
                   e.stopPropagation();
@@ -301,9 +301,9 @@ export function ProductTable({ showRecentsOnMount, isMiscellaneous }: ProductTab
               }}
             >
               {row.original.image_url ? (
-                <img src={row.original.image_url} alt={row.original.name} className="w-full h-full object-cover" />
+                <img src={row.original.image_url} alt={row.original.name} className="w-full h-full object-contain p-1" />
               ) : (
-                <ImageIcon className="w-4 h-4 text-slate-400" />
+                <ImageIcon className={isMiscellaneous ? "w-7 h-7 text-slate-400" : "w-4 h-4 text-slate-400"} />
               )}
             </div>
           );
@@ -311,7 +311,7 @@ export function ProductTable({ showRecentsOnMount, isMiscellaneous }: ProductTab
       }),
       columnHelper.accessor('code', {
         header: 'SKU',
-        size: 80,
+        size: isMiscellaneous ? 95 : 80,
         cell: (info) => (
           <span 
             className="font-mono text-[11px] text-slate-500 leading-tight block cursor-copy hover:text-blue-600 hover:font-bold transition-all"
@@ -338,12 +338,12 @@ export function ProductTable({ showRecentsOnMount, isMiscellaneous }: ProductTab
             <ArrowUpDown className="w-3 h-3" />
           </button>
         ),
-        size: 280,
+        size: isMiscellaneous ? 340 : 280,
         cell: ({ row }) => (
           <div>
-            <p className="font-semibold text-[13px] text-slate-900 leading-tight">{row.original.name}</p>
+            <p className={`font-semibold text-slate-900 leading-snug ${isMiscellaneous ? 'text-[14px]' : 'text-[13px]'}`}>{row.original.name}</p>
             {row.original.is_active === false ? (
-              <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+              <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
                 <EyeOff className="w-3 h-3" /> WEB: OCULTO
               </span>
             ) : null}
@@ -353,7 +353,7 @@ export function ProductTable({ showRecentsOnMount, isMiscellaneous }: ProductTab
       columnHelper.display({
         id: 'brand',
         header: 'MARCA',
-        size: 80,
+        size: isMiscellaneous ? 100 : 80,
         cell: ({ row }) => {
           const brand = row.original.brands;
           if (!brand?.name) return <span className="text-slate-300">—</span>;
@@ -361,7 +361,7 @@ export function ProductTable({ showRecentsOnMount, isMiscellaneous }: ProductTab
             <img 
               src={brand.logo_url} 
               alt={brand.name} 
-              className="h-5 object-contain max-w-[70px]" 
+              className={`${isMiscellaneous ? 'h-7 max-w-[85px]' : 'h-5 max-w-[70px]'} object-contain`} 
               title={brand.name}
               onError={(e) => {
                 const el = e.currentTarget;
@@ -508,7 +508,7 @@ export function ProductTable({ showRecentsOnMount, isMiscellaneous }: ProductTab
         ),
       }),
     ],
-    [bcvRate, bcvMultiplier, addItem, selectedIds, lastSelectedId]
+    [bcvRate, bcvMultiplier, addItem, selectedIds, lastSelectedId, isMiscellaneous]
   );
 
   const table = useReactTable({
@@ -798,7 +798,7 @@ export function ProductTable({ showRecentsOnMount, isMiscellaneous }: ProductTab
 
       {/* Table for Desktop */}
       <div className="flex-1 overflow-auto min-w-0">
-        <table className="w-full text-sm hidden md:table min-w-[880px]">
+        <table className={`w-full text-sm hidden md:table ${isMiscellaneous ? 'min-w-[960px]' : 'min-w-[880px]'}`}>
           <thead className="bg-slate-50 sticky top-0 z-10">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
@@ -822,7 +822,7 @@ export function ProductTable({ showRecentsOnMount, isMiscellaneous }: ProductTab
                 onClick={() => handleEditProduct(row.original)}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-4 py-3">
+                  <td key={cell.id} className={isMiscellaneous ? "px-4 py-4 align-middle" : "px-4 py-3"}>
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
